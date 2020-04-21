@@ -39,7 +39,7 @@ enum ResolutionPreset {
 }
 
 // ignore: inference_failure_on_function_return_type
-typedef onLatestImageAvailable = Function(CameraImage image);
+typedef onLatestQrStringAvailable = Function(String image);
 
 /// Returns the resolution preset as a String.
 String serializeResolutionPreset(ResolutionPreset resolutionPreset) {
@@ -155,17 +155,13 @@ class CameraValue {
     this.isInitialized,
     this.errorDescription,
     this.previewSize,
-    this.isRecordingVideo,
-    this.isTakingPicture,
     this.isStreamingImages,
     bool isRecordingPaused,
-  }) : _isRecordingPaused = isRecordingPaused;
+  });
 
   const CameraValue.uninitialized()
       : this(
           isInitialized: false,
-          isRecordingVideo: false,
-          isTakingPicture: false,
           isStreamingImages: false,
           isRecordingPaused: false,
         );
@@ -173,19 +169,8 @@ class CameraValue {
   /// True after [CameraController.initialize] has completed successfully.
   final bool isInitialized;
 
-  /// True when a picture capture request has been sent but as not yet returned.
-  final bool isTakingPicture;
-
-  /// True when the camera is recording (not the same as previewing).
-  final bool isRecordingVideo;
-
   /// True when images from the camera are being streamed.
   final bool isStreamingImages;
-
-  final bool _isRecordingPaused;
-
-  /// True when camera [isRecordingVideo] and recording is paused.
-  bool get isRecordingPaused => isRecordingVideo && _isRecordingPaused;
 
   final String errorDescription;
 
@@ -214,18 +199,13 @@ class CameraValue {
       isInitialized: isInitialized ?? this.isInitialized,
       errorDescription: errorDescription,
       previewSize: previewSize ?? this.previewSize,
-      isRecordingVideo: isRecordingVideo ?? this.isRecordingVideo,
-      isTakingPicture: isTakingPicture ?? this.isTakingPicture,
       isStreamingImages: isStreamingImages ?? this.isStreamingImages,
-      isRecordingPaused: isRecordingPaused ?? _isRecordingPaused,
     );
   }
 
   @override
   String toString() {
     return '$runtimeType('
-        'isRecordingVideo: $isRecordingVideo, '
-        'isRecordingVideo: $isRecordingVideo, '
         'isInitialized: $isInitialized, '
         'errorDescription: $errorDescription, '
         'previewSize: $previewSize, '
@@ -330,41 +310,6 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
   }
 
-  /// Captures an image and saves it to [path].
-  ///
-  /// A path can for example be obtained using
-  /// [path_provider](https://pub.dartlang.org/packages/path_provider).
-  ///
-  /// If a file already exists at the provided path an error will be thrown.
-  /// The file can be read as this function returns.
-  ///
-  /// Throws a [CameraException] if the capture fails.
-  Future<void> takePicture(String path) async {
-    if (!value.isInitialized || _isDisposed) {
-      throw CameraException(
-        'Uninitialized CameraController.',
-        'takePicture was called on uninitialized CameraController',
-      );
-    }
-    if (value.isTakingPicture) {
-      throw CameraException(
-        'Previous capture has not returned yet.',
-        'takePicture was called before the previous capture returned.',
-      );
-    }
-    try {
-      value = value.copyWith(isTakingPicture: true);
-      await _channel.invokeMethod<void>(
-        'takePicture',
-        <String, dynamic>{'textureId': _textureId, 'path': path},
-      );
-      value = value.copyWith(isTakingPicture: false);
-    } on PlatformException catch (e) {
-      value = value.copyWith(isTakingPicture: false);
-      throw CameraException(e.code, e.message);
-    }
-  }
-
   /// Start streaming images from platform camera.
   ///
   /// Settings for capturing images on iOS and Android is set to always use the
@@ -378,17 +323,11 @@ class CameraController extends ValueNotifier<CameraValue> {
   /// Throws a [CameraException] if image streaming or video recording has
   /// already started.
   // TODO(bmparr): Add settings for resolution and fps.
-  Future<void> startImageStream(onLatestImageAvailable onAvailable) async {
+  Future<void> startImageStream(onLatestQrStringAvailable onAvailable) async {
     if (!value.isInitialized || _isDisposed) {
       throw CameraException(
         'Uninitialized CameraController',
         'startImageStream was called on uninitialized CameraController.',
-      );
-    }
-    if (value.isRecordingVideo) {
-      throw CameraException(
-        'A video recording is already started.',
-        'startImageStream was called while a video is being recorded.',
       );
     }
     if (value.isStreamingImages) {
@@ -409,7 +348,7 @@ class CameraController extends ValueNotifier<CameraValue> {
     _imageStreamSubscription =
         cameraEventChannel.receiveBroadcastStream().listen(
       (dynamic imageData) {
-        onAvailable(CameraImage._fromPlatformData(imageData));
+        onAvailable(imageData);
       },
     );
   }
@@ -423,12 +362,6 @@ class CameraController extends ValueNotifier<CameraValue> {
       throw CameraException(
         'Uninitialized CameraController',
         'stopImageStream was called on uninitialized CameraController.',
-      );
-    }
-    if (value.isRecordingVideo) {
-      throw CameraException(
-        'A video recording is already started.',
-        'stopImageStream was called while a video is being recorded.',
       );
     }
     if (!value.isStreamingImages) {
@@ -447,126 +380,6 @@ class CameraController extends ValueNotifier<CameraValue> {
 
     await _imageStreamSubscription.cancel();
     _imageStreamSubscription = null;
-  }
-
-  /// Start a video recording and save the file to [path].
-  ///
-  /// A path can for example be obtained using
-  /// [path_provider](https://pub.dartlang.org/packages/path_provider).
-  ///
-  /// The file is written on the flight as the video is being recorded.
-  /// If a file already exists at the provided path an error will be thrown.
-  /// The file can be read as soon as [stopVideoRecording] returns.
-  ///
-  /// Throws a [CameraException] if the capture fails.
-  Future<void> startVideoRecording(String filePath) async {
-    if (!value.isInitialized || _isDisposed) {
-      throw CameraException(
-        'Uninitialized CameraController',
-        'startVideoRecording was called on uninitialized CameraController',
-      );
-    }
-    if (value.isRecordingVideo) {
-      throw CameraException(
-        'A video recording is already started.',
-        'startVideoRecording was called when a recording is already started.',
-      );
-    }
-    if (value.isStreamingImages) {
-      throw CameraException(
-        'A camera has started streaming images.',
-        'startVideoRecording was called while a camera was streaming images.',
-      );
-    }
-
-    try {
-      await _channel.invokeMethod<void>(
-        'startVideoRecording',
-        <String, dynamic>{'textureId': _textureId, 'filePath': filePath},
-      );
-      value = value.copyWith(isRecordingVideo: true, isRecordingPaused: false);
-    } on PlatformException catch (e) {
-      throw CameraException(e.code, e.message);
-    }
-  }
-
-  /// Stop recording.
-  Future<void> stopVideoRecording() async {
-    if (!value.isInitialized || _isDisposed) {
-      throw CameraException(
-        'Uninitialized CameraController',
-        'stopVideoRecording was called on uninitialized CameraController',
-      );
-    }
-    if (!value.isRecordingVideo) {
-      throw CameraException(
-        'No video is recording',
-        'stopVideoRecording was called when no video is recording.',
-      );
-    }
-    try {
-      value = value.copyWith(isRecordingVideo: false);
-      await _channel.invokeMethod<void>(
-        'stopVideoRecording',
-        <String, dynamic>{'textureId': _textureId},
-      );
-    } on PlatformException catch (e) {
-      throw CameraException(e.code, e.message);
-    }
-  }
-
-  /// Pause video recording.
-  ///
-  /// This feature is only available on iOS and Android sdk 24+.
-  Future<void> pauseVideoRecording() async {
-    if (!value.isInitialized || _isDisposed) {
-      throw CameraException(
-        'Uninitialized CameraController',
-        'pauseVideoRecording was called on uninitialized CameraController',
-      );
-    }
-    if (!value.isRecordingVideo) {
-      throw CameraException(
-        'No video is recording',
-        'pauseVideoRecording was called when no video is recording.',
-      );
-    }
-    try {
-      value = value.copyWith(isRecordingPaused: true);
-      await _channel.invokeMethod<void>(
-        'pauseVideoRecording',
-        <String, dynamic>{'textureId': _textureId},
-      );
-    } on PlatformException catch (e) {
-      throw CameraException(e.code, e.message);
-    }
-  }
-
-  /// Resume video recording after pausing.
-  ///
-  /// This feature is only available on iOS and Android sdk 24+.
-  Future<void> resumeVideoRecording() async {
-    if (!value.isInitialized || _isDisposed) {
-      throw CameraException(
-        'Uninitialized CameraController',
-        'resumeVideoRecording was called on uninitialized CameraController',
-      );
-    }
-    if (!value.isRecordingVideo) {
-      throw CameraException(
-        'No video is recording',
-        'resumeVideoRecording was called when no video is recording.',
-      );
-    }
-    try {
-      value = value.copyWith(isRecordingPaused: false);
-      await _channel.invokeMethod<void>(
-        'resumeVideoRecording',
-        <String, dynamic>{'textureId': _textureId},
-      );
-    } on PlatformException catch (e) {
-      throw CameraException(e.code, e.message);
-    }
   }
 
   /// Releases the resources of this camera.

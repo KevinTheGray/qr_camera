@@ -201,11 +201,8 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 
 - (void)start;
 - (void)stop;
-- (void)startVideoRecordingAtPath:(NSString *)path result:(FlutterResult)result;
-- (void)stopVideoRecordingWithResult:(FlutterResult)result;
 - (void)startImageStreamWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger;
 - (void)stopImageStream;
-- (void)captureToFile:(NSString *)filename result:(FlutterResult)result;
 @end
 
 @implementation FLTCam {
@@ -271,19 +268,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
 
 - (void)stop {
   [_captureSession stopRunning];
-}
-
-- (void)captureToFile:(NSString *)path result:(FlutterResult)result {
-  AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
-  if (_resolutionPreset == max) {
-    [settings setHighResolutionPhotoEnabled:YES];
-  }
-  [_capturePhotoOutput
-      capturePhotoWithSettings:settings
-                      delegate:[[FLTSavePhotoDelegate alloc] initWithPath:path
-                                                                   result:result
-                                                            motionManager:_motionManager
-                                                           cameraPosition:_captureDevice.position]];
 }
 
 - (void)setCaptureSessionPreset:(ResolutionPreset)resolutionPreset {
@@ -370,129 +354,27 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   if (_isStreamingImages) {
     if (_imageStreamHandler.eventSink) {
       CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-      CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+      CIImage *ciImage = [CIImage imageWithCVPixelBuffer:pixelBuffer];
+      
+      NSDictionary* options;
+      CIContext* context = [CIContext context];
+      options = @{ CIDetectorAccuracy : CIDetectorAccuracyHigh };
 
-      size_t imageWidth = CVPixelBufferGetWidth(pixelBuffer);
-      size_t imageHeight = CVPixelBufferGetHeight(pixelBuffer);
-
-      NSMutableArray *planes = [NSMutableArray array];
-
-      const Boolean isPlanar = CVPixelBufferIsPlanar(pixelBuffer);
-      size_t planeCount;
-      if (isPlanar) {
-        planeCount = CVPixelBufferGetPlaneCount(pixelBuffer);
+      CIDetector* qrDetector = [CIDetector detectorOfType:CIDetectorTypeQRCode
+                                                  context:context
+                                                  options:options];
+      if ([[ciImage properties] valueForKey:(NSString*) kCGImagePropertyOrientation] == nil) {
+          options = @{ CIDetectorImageOrientation : @1};
       } else {
-        planeCount = 1;
+          options = @{ CIDetectorImageOrientation : [[ciImage properties] valueForKey:(NSString*) kCGImagePropertyOrientation]};
       }
-
-      for (int i = 0; i < planeCount; i++) {
-        void *planeAddress;
-        size_t bytesPerRow;
-        size_t height;
-        size_t width;
-
-        if (isPlanar) {
-          planeAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, i);
-          bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, i);
-          height = CVPixelBufferGetHeightOfPlane(pixelBuffer, i);
-          width = CVPixelBufferGetWidthOfPlane(pixelBuffer, i);
-        } else {
-          planeAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
-          bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
-          height = CVPixelBufferGetHeight(pixelBuffer);
-          width = CVPixelBufferGetWidth(pixelBuffer);
-        }
-
-        NSNumber *length = @(bytesPerRow * height);
-        NSData *bytes = [NSData dataWithBytes:planeAddress length:length.unsignedIntegerValue];
-
-        NSMutableDictionary *planeBuffer = [NSMutableDictionary dictionary];
-        planeBuffer[@"bytesPerRow"] = @(bytesPerRow);
-        planeBuffer[@"width"] = @(width);
-        planeBuffer[@"height"] = @(height);
-        planeBuffer[@"bytes"] = [FlutterStandardTypedData typedDataWithBytes:bytes];
-
-        [planes addObject:planeBuffer];
+      NSArray * features = [qrDetector featuresInImage:ciImage
+                                               options:options];
+      if (features != nil && features.count > 0) {
+        CIQRCodeFeature* qrFeature = features[0];
+        _imageStreamHandler.eventSink([NSString stringWithFormat:@"%@", qrFeature.messageString]);
       }
-
-      NSMutableDictionary *imageBuffer = [NSMutableDictionary dictionary];
-      imageBuffer[@"width"] = [NSNumber numberWithUnsignedLong:imageWidth];
-      imageBuffer[@"height"] = [NSNumber numberWithUnsignedLong:imageHeight];
-      imageBuffer[@"format"] = @(videoFormat);
-      imageBuffer[@"planes"] = planes;
-
-      _imageStreamHandler.eventSink(imageBuffer);
-
-      CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
     }
-  }
-  if (_isRecording && !_isRecordingPaused) {
-    if (_videoWriter.status == AVAssetWriterStatusFailed) {
-      _eventSink(@{
-        @"event" : @"error",
-        @"errorDescription" : [NSString stringWithFormat:@"%@", _videoWriter.error]
-      });
-      return;
-    }
-
-    CFRetain(sampleBuffer);
-    CMTime currentSampleTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-
-    if (_videoWriter.status != AVAssetWriterStatusWriting) {
-      [_videoWriter startWriting];
-      [_videoWriter startSessionAtSourceTime:currentSampleTime];
-    }
-
-    if (output == _captureVideoOutput) {
-      if (_videoIsDisconnected) {
-        _videoIsDisconnected = NO;
-
-        if (_videoTimeOffset.value == 0) {
-          _videoTimeOffset = CMTimeSubtract(currentSampleTime, _lastVideoSampleTime);
-        } else {
-          CMTime offset = CMTimeSubtract(currentSampleTime, _lastVideoSampleTime);
-          _videoTimeOffset = CMTimeAdd(_videoTimeOffset, offset);
-        }
-
-        return;
-      }
-
-      _lastVideoSampleTime = currentSampleTime;
-
-      CVPixelBufferRef nextBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-      CMTime nextSampleTime = CMTimeSubtract(_lastVideoSampleTime, _videoTimeOffset);
-      [_videoAdaptor appendPixelBuffer:nextBuffer withPresentationTime:nextSampleTime];
-    } else {
-      CMTime dur = CMSampleBufferGetDuration(sampleBuffer);
-
-      if (dur.value > 0) {
-        currentSampleTime = CMTimeAdd(currentSampleTime, dur);
-      }
-
-      if (_audioIsDisconnected) {
-        _audioIsDisconnected = NO;
-
-        if (_audioTimeOffset.value == 0) {
-          _audioTimeOffset = CMTimeSubtract(currentSampleTime, _lastAudioSampleTime);
-        } else {
-          CMTime offset = CMTimeSubtract(currentSampleTime, _lastAudioSampleTime);
-          _audioTimeOffset = CMTimeAdd(_audioTimeOffset, offset);
-        }
-
-        return;
-      }
-
-      _lastAudioSampleTime = currentSampleTime;
-
-      if (_audioTimeOffset.value != 0) {
-        CFRelease(sampleBuffer);
-        sampleBuffer = [self adjustTime:sampleBuffer by:_audioTimeOffset];
-      }
-
-      [self newAudioSample:sampleBuffer];
-    }
-
-    CFRelease(sampleBuffer);
   }
 }
 
@@ -509,27 +391,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   CMSampleBufferCreateCopyWithNewTiming(nil, sample, count, pInfo, &sout);
   free(pInfo);
   return sout;
-}
-
-- (void)newVideoSample:(CMSampleBufferRef)sampleBuffer {
-  if (_videoWriter.status != AVAssetWriterStatusWriting) {
-    if (_videoWriter.status == AVAssetWriterStatusFailed) {
-      _eventSink(@{
-        @"event" : @"error",
-        @"errorDescription" : [NSString stringWithFormat:@"%@", _videoWriter.error]
-      });
-    }
-    return;
-  }
-  if (_videoWriterInput.readyForMoreMediaData) {
-    if (![_videoWriterInput appendSampleBuffer:sampleBuffer]) {
-      _eventSink(@{
-        @"event" : @"error",
-        @"errorDescription" :
-            [NSString stringWithFormat:@"%@", @"Unable to write to video input"]
-      });
-    }
-  }
 }
 
 - (void)newAudioSample:(CMSampleBufferRef)sampleBuffer {
@@ -592,58 +453,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   return nil;
 }
 
-- (void)startVideoRecordingAtPath:(NSString *)path result:(FlutterResult)result {
-  if (!_isRecording) {
-    if (![self setupWriterForPath:path]) {
-      _eventSink(@{@"event" : @"error", @"errorDescription" : @"Setup Writer Failed"});
-      return;
-    }
-    _isRecording = YES;
-    _isRecordingPaused = NO;
-    _videoTimeOffset = CMTimeMake(0, 1);
-    _audioTimeOffset = CMTimeMake(0, 1);
-    _videoIsDisconnected = NO;
-    _audioIsDisconnected = NO;
-    result(nil);
-  } else {
-    _eventSink(@{@"event" : @"error", @"errorDescription" : @"Video is already recording!"});
-  }
-}
-
-- (void)stopVideoRecordingWithResult:(FlutterResult)result {
-  if (_isRecording) {
-    _isRecording = NO;
-    if (_videoWriter.status != AVAssetWriterStatusUnknown) {
-      [_videoWriter finishWritingWithCompletionHandler:^{
-        if (self->_videoWriter.status == AVAssetWriterStatusCompleted) {
-          result(nil);
-        } else {
-          self->_eventSink(@{
-            @"event" : @"error",
-            @"errorDescription" : @"AVAssetWriter could not finish writing!"
-          });
-        }
-      }];
-    }
-  } else {
-    NSError *error =
-        [NSError errorWithDomain:NSCocoaErrorDomain
-                            code:NSURLErrorResourceUnavailable
-                        userInfo:@{NSLocalizedDescriptionKey : @"Video is not recording!"}];
-    result(getFlutterError(error));
-  }
-}
-
-- (void)pauseVideoRecording {
-  _isRecordingPaused = YES;
-  _videoIsDisconnected = YES;
-  _audioIsDisconnected = YES;
-}
-
-- (void)resumeVideoRecording {
-  _isRecordingPaused = NO;
-}
-
 - (void)startImageStreamWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger {
   if (!_isStreamingImages) {
     FlutterEventChannel *eventChannel =
@@ -677,9 +486,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
     outputURL = [NSURL fileURLWithPath:path];
   } else {
     return NO;
-  }
-  if (_enableAudio && !_isAudioSetup) {
-    [self setUpCaptureSessionForAudio];
   }
   _videoWriter = [[AVAssetWriter alloc] initWithURL:outputURL
                                            fileType:AVFileTypeQuickTimeMovie
@@ -731,34 +537,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   [_captureVideoOutput setSampleBufferDelegate:self queue:_dispatchQueue];
 
   return YES;
-}
-- (void)setUpCaptureSessionForAudio {
-  NSError *error = nil;
-  // Create a device input with the device and add it to the session.
-  // Setup the audio input.
-  AVCaptureDevice *audioDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
-  AVCaptureDeviceInput *audioInput = [AVCaptureDeviceInput deviceInputWithDevice:audioDevice
-                                                                           error:&error];
-  if (error) {
-    _eventSink(@{@"event" : @"error", @"errorDescription" : error.description});
-  }
-  // Setup the audio output.
-  _audioOutput = [[AVCaptureAudioDataOutput alloc] init];
-
-  if ([_captureSession canAddInput:audioInput]) {
-    [_captureSession addInput:audioInput];
-
-    if ([_captureSession canAddOutput:_audioOutput]) {
-      [_captureSession addOutput:_audioOutput];
-      _isAudioSetup = YES;
-    } else {
-      _eventSink(@{
-        @"event" : @"error",
-        @"errorDescription" : @"Unable to add Audio input/output to session capture"
-      });
-      _isAudioSetup = NO;
-    }
-  }
 }
 @end
 
@@ -872,30 +650,14 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   } else if ([@"stopImageStream" isEqualToString:call.method]) {
     [_camera stopImageStream];
     result(nil);
-  } else if ([@"pauseVideoRecording" isEqualToString:call.method]) {
-    [_camera pauseVideoRecording];
-    result(nil);
-  } else if ([@"resumeVideoRecording" isEqualToString:call.method]) {
-    [_camera resumeVideoRecording];
-    result(nil);
   } else {
     NSDictionary *argsMap = call.arguments;
     NSUInteger textureId = ((NSNumber *)argsMap[@"textureId"]).unsignedIntegerValue;
-
-    if ([@"takePicture" isEqualToString:call.method]) {
-      [_camera captureToFile:call.arguments[@"path"] result:result];
-    } else if ([@"dispose" isEqualToString:call.method]) {
+    if ([@"dispose" isEqualToString:call.method]) {
       [_registry unregisterTexture:textureId];
       [_camera close];
       _dispatchQueue = nil;
       result(nil);
-    } else if ([@"prepareForVideoRecording" isEqualToString:call.method]) {
-      [_camera setUpCaptureSessionForAudio];
-      result(nil);
-    } else if ([@"startVideoRecording" isEqualToString:call.method]) {
-      [_camera startVideoRecordingAtPath:call.arguments[@"filePath"] result:result];
-    } else if ([@"stopVideoRecording" isEqualToString:call.method]) {
-      [_camera stopVideoRecordingWithResult:result];
     } else {
       result(FlutterMethodNotImplemented);
     }
