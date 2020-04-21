@@ -7,6 +7,7 @@
 #import <Accelerate/Accelerate.h>
 #import <CoreMotion/CoreMotion.h>
 #import <libkern/OSAtomic.h>
+#import <VideoToolbox/VideoToolbox.h>
 
 static FlutterError *getFlutterError(NSError *error) {
   return [FlutterError errorWithCode:[NSString stringWithFormat:@"Error %d", (int)error.code]
