@@ -96,7 +96,6 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
   private void instantiateCamera(MethodCall call, Result result) throws CameraAccessException {
     String cameraName = call.argument("cameraName");
     String resolutionPreset = call.argument("resolutionPreset");
-    boolean enableAudio = call.argument("enableAudio");
     TextureRegistry.SurfaceTextureEntry flutterSurfaceTexture =
         textureRegistry.createSurfaceTexture();
     DartMessenger dartMessenger = new DartMessenger(messenger, flutterSurfaceTexture.id());
@@ -106,8 +105,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
             flutterSurfaceTexture,
             dartMessenger,
             cameraName,
-            resolutionPreset,
-            enableAudio);
+            resolutionPreset);
 
     camera.open(result);
   }
