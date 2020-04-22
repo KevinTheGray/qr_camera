@@ -104,7 +104,6 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
                               FlutterStreamHandler>
 @property(readonly, nonatomic) int64_t textureId;
 @property(nonatomic, copy) void (^onFrameAvailable)();
-@property BOOL enableAudio;
 @property(nonatomic) FlutterEventChannel *eventChannel;
 @property(nonatomic) FLTImageStreamHandler *imageStreamHandler;
 @property(nonatomic) FlutterEventSink eventSink;
@@ -116,10 +115,6 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 @property(readonly) CVPixelBufferRef volatile latestPixelBuffer;
 @property(readonly, nonatomic) CGSize previewSize;
 @property(readonly, nonatomic) CGSize captureSize;
-@property(strong, nonatomic) AVAssetWriter *videoWriter;
-@property(strong, nonatomic) AVAssetWriterInput *videoWriterInput;
-@property(strong, nonatomic) AVAssetWriterInput *audioWriterInput;
-@property(strong, nonatomic) AVAssetWriterInputPixelBufferAdaptor *assetWriterPixelBufferAdaptor;
 @property(strong, nonatomic) AVCaptureVideoDataOutput *videoOutput;
 @property(strong, nonatomic) AVCaptureAudioDataOutput *audioOutput;
 @property(assign, nonatomic) BOOL isStreamingImages;
@@ -127,7 +122,6 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 @property AVAssetWriterInputPixelBufferAdaptor *videoAdaptor;
 - (instancetype)initWithCameraName:(NSString *)cameraName
                   resolutionPreset:(NSString *)resolutionPreset
-                       enableAudio:(BOOL)enableAudio
                      dispatchQueue:(dispatch_queue_t)dispatchQueue
                              error:(NSError **)error;
 
@@ -145,7 +139,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
 
 - (instancetype)initWithCameraName:(NSString *)cameraName
                   resolutionPreset:(NSString *)resolutionPreset
-                       enableAudio:(BOOL)enableAudio
                      dispatchQueue:(dispatch_queue_t)dispatchQueue
                              error:(NSError **)error {
   self = [super init];
@@ -155,7 +148,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   } @catch (NSError *e) {
     *error = e;
   }
-  _enableAudio = enableAudio;
   _dispatchQueue = dispatchQueue;
   _captureSession = [[AVCaptureSession alloc] init];
 
@@ -323,27 +315,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   return sout;
 }
 
-- (void)newAudioSample:(CMSampleBufferRef)sampleBuffer {
-  if (_videoWriter.status != AVAssetWriterStatusWriting) {
-    if (_videoWriter.status == AVAssetWriterStatusFailed) {
-      _eventSink(@{
-        @"event" : @"error",
-        @"errorDescription" : [NSString stringWithFormat:@"%@", _videoWriter.error]
-      });
-    }
-    return;
-  }
-  if (_audioWriterInput.readyForMoreMediaData) {
-    if (![_audioWriterInput appendSampleBuffer:sampleBuffer]) {
-      _eventSink(@{
-        @"event" : @"error",
-        @"errorDescription" :
-            [NSString stringWithFormat:@"%@", @"Unable to write to audio input"]
-      });
-    }
-  }
-}
-
 - (void)close {
   [_captureSession stopRunning];
   for (AVCaptureInput *input in [_captureSession inputs]) {
@@ -406,66 +377,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
     _eventSink(
         @{@"event" : @"error", @"errorDescription" : @"Images from camera are not streaming!"});
   }
-}
-
-- (BOOL)setupWriterForPath:(NSString *)path {
-  NSError *error = nil;
-  NSURL *outputURL;
-  if (path != nil) {
-    outputURL = [NSURL fileURLWithPath:path];
-  } else {
-    return NO;
-  }
-  _videoWriter = [[AVAssetWriter alloc] initWithURL:outputURL
-                                           fileType:AVFileTypeQuickTimeMovie
-                                              error:&error];
-  NSParameterAssert(_videoWriter);
-  if (error) {
-    _eventSink(@{@"event" : @"error", @"errorDescription" : error.description});
-    return NO;
-  }
-  NSDictionary *videoSettings = [NSDictionary
-      dictionaryWithObjectsAndKeys:AVVideoCodecH264, AVVideoCodecKey,
-                                   [NSNumber numberWithInt:_previewSize.height], AVVideoWidthKey,
-                                   [NSNumber numberWithInt:_previewSize.width], AVVideoHeightKey,
-                                   nil];
-  _videoWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo
-                                                         outputSettings:videoSettings];
-
-  _videoAdaptor = [AVAssetWriterInputPixelBufferAdaptor
-      assetWriterInputPixelBufferAdaptorWithAssetWriterInput:_videoWriterInput
-                                 sourcePixelBufferAttributes:@{
-                                   (NSString *)kCVPixelBufferPixelFormatTypeKey : @(videoFormat)
-                                 }];
-
-  NSParameterAssert(_videoWriterInput);
-  _videoWriterInput.expectsMediaDataInRealTime = YES;
-
-  // Add the audio input
-  if (_enableAudio) {
-    AudioChannelLayout acl;
-    bzero(&acl, sizeof(acl));
-    acl.mChannelLayoutTag = kAudioChannelLayoutTag_Mono;
-    NSDictionary *audioOutputSettings = nil;
-    // Both type of audio inputs causes output video file to be corrupted.
-    audioOutputSettings = [NSDictionary
-        dictionaryWithObjectsAndKeys:[NSNumber numberWithInt:kAudioFormatMPEG4AAC], AVFormatIDKey,
-                                     [NSNumber numberWithFloat:44100.0], AVSampleRateKey,
-                                     [NSNumber numberWithInt:1], AVNumberOfChannelsKey,
-                                     [NSData dataWithBytes:&acl length:sizeof(acl)],
-                                     AVChannelLayoutKey, nil];
-    _audioWriterInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio
-                                                           outputSettings:audioOutputSettings];
-    _audioWriterInput.expectsMediaDataInRealTime = YES;
-
-    [_videoWriter addInput:_audioWriterInput];
-    [_audioOutput setSampleBufferDelegate:self queue:_dispatchQueue];
-  }
-
-  [_videoWriter addInput:_videoWriterInput];
-  [_captureVideoOutput setSampleBufferDelegate:self queue:_dispatchQueue];
-
-  return YES;
 }
 @end
 
@@ -539,11 +450,9 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   } else if ([@"initialize" isEqualToString:call.method]) {
     NSString *cameraName = call.arguments[@"cameraName"];
     NSString *resolutionPreset = call.arguments[@"resolutionPreset"];
-    NSNumber *enableAudio = call.arguments[@"enableAudio"];
     NSError *error;
     FLTCam *cam = [[FLTCam alloc] initWithCameraName:cameraName
                                     resolutionPreset:resolutionPreset
-                                         enableAudio:[enableAudio boolValue]
                                        dispatchQueue:_dispatchQueue
                                                error:&error];
     if (error) {
