@@ -72,37 +72,6 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
 
           break;
         }
-      case "takePicture":
-        {
-          camera.takePicture(call.argument("path"), result);
-          break;
-        }
-      case "prepareForVideoRecording":
-        {
-          // This optimization is not required for Android.
-          result.success(null);
-          break;
-        }
-      case "startVideoRecording":
-        {
-          camera.startVideoRecording(call.argument("filePath"), result);
-          break;
-        }
-      case "stopVideoRecording":
-        {
-          camera.stopVideoRecording(result);
-          break;
-        }
-      case "pauseVideoRecording":
-        {
-          camera.pauseVideoRecording(result);
-          break;
-        }
-      case "resumeVideoRecording":
-        {
-          camera.resumeVideoRecording(result);
-          break;
-        }
       case "startImageStream":
         {
           try {

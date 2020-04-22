@@ -11,14 +11,12 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
-import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.CamcorderProfile;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaRecorder;
-import android.os.Build;
 import android.util.Size;
 import android.view.OrientationEventListener;
 import android.view.Surface;
@@ -231,61 +229,6 @@ public class Camera {
     return flutterTexture;
   }
 
-  public void takePicture(String filePath, @NonNull final Result result) {
-    final File file = new File(filePath);
-
-    if (file.exists()) {
-      result.error(
-          "fileExists", "File at path '" + filePath + "' already exists. Cannot overwrite.", null);
-      return;
-    }
-
-    pictureImageReader.setOnImageAvailableListener(
-        reader -> {
-          try (Image image = reader.acquireLatestImage()) {
-            ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-            writeToFile(buffer, file);
-            result.success(null);
-          } catch (IOException e) {
-            result.error("IOError", "Failed saving image", null);
-          }
-        },
-        null);
-
-    try {
-      final CaptureRequest.Builder captureBuilder =
-          cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
-      captureBuilder.addTarget(pictureImageReader.getSurface());
-      captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getMediaOrientation());
-
-      cameraCaptureSession.capture(
-          captureBuilder.build(),
-          new CameraCaptureSession.CaptureCallback() {
-            @Override
-            public void onCaptureFailed(
-                @NonNull CameraCaptureSession session,
-                @NonNull CaptureRequest request,
-                @NonNull CaptureFailure failure) {
-              String reason;
-              switch (failure.getReason()) {
-                case CaptureFailure.REASON_ERROR:
-                  reason = "An error happened in the framework";
-                  break;
-                case CaptureFailure.REASON_FLUSHED:
-                  reason = "The capture has failed due to an abortCaptures() call";
-                  break;
-                default:
-                  reason = "Unknown reason";
-              }
-              result.error("captureFailure", reason, null);
-            }
-          },
-          null);
-    } catch (CameraAccessException e) {
-      result.error("cameraAccess", e.getMessage(), null);
-    }
-  }
-
   private void createCaptureSession(int templateType, Surface... surfaces)
       throws CameraAccessException {
     createCaptureSession(templateType, null, surfaces);
@@ -350,82 +293,6 @@ public class Camera {
     surfaceList.addAll(remainingSurfaces);
     // Start the session
     cameraDevice.createCaptureSession(surfaceList, callback, null);
-  }
-
-  public void startVideoRecording(String filePath, Result result) {
-    if (new File(filePath).exists()) {
-      result.error("fileExists", "File at path '" + filePath + "' already exists.", null);
-      return;
-    }
-    try {
-      prepareMediaRecorder(filePath);
-      recordingVideo = true;
-      createCaptureSession(
-          CameraDevice.TEMPLATE_RECORD, () -> mediaRecorder.start(), mediaRecorder.getSurface());
-      result.success(null);
-    } catch (CameraAccessException | IOException e) {
-      result.error("videoRecordingFailed", e.getMessage(), null);
-    }
-  }
-
-  public void stopVideoRecording(@NonNull final Result result) {
-    if (!recordingVideo) {
-      result.success(null);
-      return;
-    }
-
-    try {
-      recordingVideo = false;
-      mediaRecorder.stop();
-      mediaRecorder.reset();
-      startPreview();
-      result.success(null);
-    } catch (CameraAccessException | IllegalStateException e) {
-      result.error("videoRecordingFailed", e.getMessage(), null);
-    }
-  }
-
-  public void pauseVideoRecording(@NonNull final Result result) {
-    if (!recordingVideo) {
-      result.success(null);
-      return;
-    }
-
-    try {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-        mediaRecorder.pause();
-      } else {
-        result.error("videoRecordingFailed", "pauseVideoRecording requires Android API +24.", null);
-        return;
-      }
-    } catch (IllegalStateException e) {
-      result.error("videoRecordingFailed", e.getMessage(), null);
-      return;
-    }
-
-    result.success(null);
-  }
-
-  public void resumeVideoRecording(@NonNull final Result result) {
-    if (!recordingVideo) {
-      result.success(null);
-      return;
-    }
-
-    try {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-        mediaRecorder.resume();
-      } else {
-        result.error(
-            "videoRecordingFailed", "resumeVideoRecording requires Android API +24.", null);
-        return;
-      }
-    } catch (IllegalStateException e) {
-      result.error("videoRecordingFailed", e.getMessage(), null);
-      return;
-    }
-
-    result.success(null);
   }
 
   public void startPreview() throws CameraAccessException {
