@@ -336,7 +336,7 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
 - (void)startScanningForQrCodesWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger {
   if (!_isScanningQrCodes) {
     FlutterEventChannel *eventChannel =
-        [FlutterEventChannel eventChannelWithName:@"plugins.flutter.io/camera/qrCodeStream"
+        [FlutterEventChannel eventChannelWithName:@"plugins.flutter.io/qr_camera/qrCodeStream"
                                   binaryMessenger:messenger];
 
     _imageStreamHandler = [[FLTImageStreamHandler alloc] init];
@@ -371,7 +371,7 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
 }
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar> *)registrar {
   FlutterMethodChannel *channel =
-      [FlutterMethodChannel methodChannelWithName:@"plugins.flutter.io/camera"
+      [FlutterMethodChannel methodChannelWithName:@"plugins.flutter.io/qr_camera"
                                   binaryMessenger:[registrar messenger]];
   CameraPlugin *instance = [[CameraPlugin alloc] initWithRegistry:[registrar textures]
                                                         messenger:[registrar messenger]];

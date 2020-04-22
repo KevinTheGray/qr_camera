@@ -28,8 +28,8 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
     this.messenger = messenger;
     this.textureRegistry = textureRegistry;
 
-    methodChannel = new MethodChannel(messenger, "plugins.flutter.io/camera");
-    qrCodeScanningChannel = new EventChannel(messenger, "plugins.flutter.io/camera/qrCodeStream");
+    methodChannel = new MethodChannel(messenger, "plugins.flutter.io/qr_camera");
+    qrCodeScanningChannel = new EventChannel(messenger, "plugins.flutter.io/qr_camera/qrCodeStream");
     methodChannel.setMethodCallHandler(this);
   }
 

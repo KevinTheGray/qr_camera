@@ -11,7 +11,7 @@ import 'package:flutter/widgets.dart';
 
 part 'camera_image.dart';
 
-final MethodChannel _channel = const MethodChannel('plugins.flutter.io/camera');
+final MethodChannel _channel = const MethodChannel('plugins.flutter.io/qr_camera');
 
 enum CameraLensDirection { front, back, external }
 
@@ -345,7 +345,7 @@ class CameraController extends ValueNotifier<CameraValue> {
       throw CameraException(e.code, e.message);
     }
     const EventChannel cameraEventChannel =
-        EventChannel('plugins.flutter.io/camera/qrCodeStream');
+        EventChannel('plugins.flutter.io/qr_camera/qrCodeStream');
     _qrCodeStringStreamSubscription =
         cameraEventChannel.receiveBroadcastStream().listen(
       (dynamic imageData) {
