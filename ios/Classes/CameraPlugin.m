@@ -116,7 +116,7 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 @property(readonly, nonatomic) CGSize captureSize;
 @property(strong, nonatomic) AVCaptureVideoDataOutput *videoOutput;
 @property(strong, nonatomic) AVCaptureAudioDataOutput *audioOutput;
-@property(assign, nonatomic) BOOL isStreamingImages;
+@property(assign, nonatomic) BOOL isScanningQrCodes;
 @property(assign, nonatomic) ResolutionPreset resolutionPreset;
 - (instancetype)initWithCameraName:(NSString *)cameraName
                   resolutionPreset:(NSString *)resolutionPreset
@@ -268,7 +268,7 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
     });
     return;
   }
-  if (_isStreamingImages) {
+  if (_isScanningQrCodes) {
     if (_imageStreamHandler.eventSink) {
       CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
       CIImage *ciImage = [CIImage imageWithCVPixelBuffer:pixelBuffer];
@@ -334,7 +334,7 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
 }
 
 - (void)startScanningForQrCodesWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger {
-  if (!_isStreamingImages) {
+  if (!_isScanningQrCodes) {
     FlutterEventChannel *eventChannel =
         [FlutterEventChannel eventChannelWithName:@"plugins.flutter.io/camera/qrCodeStream"
                                   binaryMessenger:messenger];
@@ -342,7 +342,7 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
     _imageStreamHandler = [[FLTImageStreamHandler alloc] init];
     [eventChannel setStreamHandler:_imageStreamHandler];
 
-    _isStreamingImages = YES;
+    _isScanningQrCodes = YES;
   } else {
     _eventSink(
         @{@"event" : @"error", @"errorDescription" : @"Images from camera are already streaming!"});
@@ -350,8 +350,8 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
 }
 
 - (void)stopScanningForQrCodes {
-  if (_isStreamingImages) {
-    _isStreamingImages = NO;
+  if (_isScanningQrCodes) {
+    _isScanningQrCodes = NO;
     _imageStreamHandler = nil;
   } else {
     _eventSink(

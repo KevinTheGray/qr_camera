@@ -17,7 +17,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
   private final BinaryMessenger messenger;
   private final TextureRegistry textureRegistry;
   private final MethodChannel methodChannel;
-  private final EventChannel imageStreamChannel;
+  private final EventChannel qrCodeScanningChannel;
   private @Nullable Camera camera;
 
   MethodCallHandlerImpl(
@@ -29,7 +29,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
     this.textureRegistry = textureRegistry;
 
     methodChannel = new MethodChannel(messenger, "plugins.flutter.io/camera");
-    imageStreamChannel = new EventChannel(messenger, "plugins.flutter.io/camera/qrCodeStream");
+    qrCodeScanningChannel = new EventChannel(messenger, "plugins.flutter.io/camera/qrCodeStream");
     methodChannel.setMethodCallHandler(this);
   }
 
@@ -58,7 +58,7 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
       case "startScanningForQrCodes":
         {
           try {
-            camera.startPreviewWithImageStream(imageStreamChannel);
+            camera.startPreviewWithQrScanning(qrCodeScanningChannel);
             result.success(null);
           } catch (Exception e) {
             handleException(e, result);

@@ -214,7 +214,7 @@ class Camera {
     createCaptureSession(CameraDevice.TEMPLATE_PREVIEW, pictureImageReader.getSurface());
   }
 
-  void startPreviewWithImageStream(EventChannel imageStreamChannel)
+  void startPreviewWithQrScanning(EventChannel imageStreamChannel)
       throws CameraAccessException {
     createCaptureSession(CameraDevice.TEMPLATE_RECORD, imageStreamReader.getSurface());
 
