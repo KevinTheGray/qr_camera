@@ -109,7 +109,6 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 @property(nonatomic) FlutterEventSink eventSink;
 @property(readonly, nonatomic) AVCaptureSession *captureSession;
 @property(readonly, nonatomic) AVCaptureDevice *captureDevice;
-@property(readonly, nonatomic) AVCapturePhotoOutput *capturePhotoOutput;
 @property(readonly, nonatomic) AVCaptureVideoDataOutput *captureVideoOutput;
 @property(readonly, nonatomic) AVCaptureInput *captureVideoInput;
 @property(readonly) CVPixelBufferRef volatile latestPixelBuffer;
@@ -119,7 +118,6 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 @property(strong, nonatomic) AVCaptureAudioDataOutput *audioOutput;
 @property(assign, nonatomic) BOOL isStreamingImages;
 @property(assign, nonatomic) ResolutionPreset resolutionPreset;
-@property AVAssetWriterInputPixelBufferAdaptor *videoAdaptor;
 - (instancetype)initWithCameraName:(NSString *)cameraName
                   resolutionPreset:(NSString *)resolutionPreset
                      dispatchQueue:(dispatch_queue_t)dispatchQueue
@@ -176,9 +174,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   [_captureSession addInputWithNoConnections:_captureVideoInput];
   [_captureSession addOutputWithNoConnections:_captureVideoOutput];
   [_captureSession addConnection:connection];
-  _capturePhotoOutput = [AVCapturePhotoOutput new];
-  [_capturePhotoOutput setHighResolutionCaptureEnabled:YES];
-  [_captureSession addOutput:_capturePhotoOutput];
 
   [self setCaptureSessionPreset:_resolutionPreset];
   return self;
@@ -298,21 +293,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
       }
     }
   }
-}
-
-- (CMSampleBufferRef)adjustTime:(CMSampleBufferRef)sample by:(CMTime)offset {
-  CMItemCount count;
-  CMSampleBufferGetSampleTimingInfoArray(sample, 0, nil, &count);
-  CMSampleTimingInfo *pInfo = malloc(sizeof(CMSampleTimingInfo) * count);
-  CMSampleBufferGetSampleTimingInfoArray(sample, count, pInfo, &count);
-  for (CMItemCount i = 0; i < count; i++) {
-    pInfo[i].decodeTimeStamp = CMTimeSubtract(pInfo[i].decodeTimeStamp, offset);
-    pInfo[i].presentationTimeStamp = CMTimeSubtract(pInfo[i].presentationTimeStamp, offset);
-  }
-  CMSampleBufferRef sout;
-  CMSampleBufferCreateCopyWithNewTiming(nil, sample, count, pInfo, &sout);
-  free(pInfo);
-  return sout;
 }
 
 - (void)close {
