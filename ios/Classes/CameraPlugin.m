@@ -18,12 +18,10 @@ static FlutterError *getFlutterError(NSError *error) {
 @interface FLTSavePhotoDelegate : NSObject <AVCapturePhotoCaptureDelegate>
 @property(readonly, nonatomic) NSString *path;
 @property(readonly, nonatomic) FlutterResult result;
-@property(readonly, nonatomic) CMMotionManager *motionManager;
 @property(readonly, nonatomic) AVCaptureDevicePosition cameraPosition;
 
 - initWithPath:(NSString *)filename
             result:(FlutterResult)result
-     motionManager:(CMMotionManager *)motionManager
     cameraPosition:(AVCaptureDevicePosition)cameraPosition;
 @end
 
@@ -52,13 +50,11 @@ static FlutterError *getFlutterError(NSError *error) {
 
 - initWithPath:(NSString *)path
             result:(FlutterResult)result
-     motionManager:(CMMotionManager *)motionManager
     cameraPosition:(AVCaptureDevicePosition)cameraPosition {
   self = [super init];
   NSAssert(self, @"super init cannot be nil");
   _path = path;
   _result = result;
-  _motionManager = motionManager;
   _cameraPosition = cameraPosition;
   selfReference = self;
   return self;
@@ -126,18 +122,8 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 @property(strong, nonatomic) AVAssetWriterInputPixelBufferAdaptor *assetWriterPixelBufferAdaptor;
 @property(strong, nonatomic) AVCaptureVideoDataOutput *videoOutput;
 @property(strong, nonatomic) AVCaptureAudioDataOutput *audioOutput;
-@property(assign, nonatomic) BOOL isRecording;
-@property(assign, nonatomic) BOOL isRecordingPaused;
-@property(assign, nonatomic) BOOL videoIsDisconnected;
-@property(assign, nonatomic) BOOL audioIsDisconnected;
-@property(assign, nonatomic) BOOL isAudioSetup;
 @property(assign, nonatomic) BOOL isStreamingImages;
 @property(assign, nonatomic) ResolutionPreset resolutionPreset;
-@property(assign, nonatomic) CMTime lastVideoSampleTime;
-@property(assign, nonatomic) CMTime lastAudioSampleTime;
-@property(assign, nonatomic) CMTime videoTimeOffset;
-@property(assign, nonatomic) CMTime audioTimeOffset;
-@property(nonatomic) CMMotionManager *motionManager;
 @property AVAssetWriterInputPixelBufferAdaptor *videoAdaptor;
 - (instancetype)initWithCameraName:(NSString *)cameraName
                   resolutionPreset:(NSString *)resolutionPreset
@@ -201,8 +187,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   _capturePhotoOutput = [AVCapturePhotoOutput new];
   [_capturePhotoOutput setHighResolutionCaptureEnabled:YES];
   [_captureSession addOutput:_capturePhotoOutput];
-  _motionManager = [[CMMotionManager alloc] init];
-  [_motionManager startAccelerometerUpdates];
 
   [self setCaptureSessionPreset:_resolutionPreset];
   return self;
@@ -374,7 +358,6 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   if (_latestPixelBuffer) {
     CFRelease(_latestPixelBuffer);
   }
-  [_motionManager stopAccelerometerUpdates];
 }
 
 - (CVPixelBufferRef)copyPixelBuffer {
