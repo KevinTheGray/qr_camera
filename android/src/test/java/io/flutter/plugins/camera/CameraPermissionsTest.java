@@ -3,7 +3,7 @@ package io.flutter.plugins.camera;
 import static junit.framework.TestCase.assertEquals;
 
 import android.content.pm.PackageManager;
-import io.flutter.plugins.camera.CameraPermissions.CameraRequestPermissionsListener;
+
 import org.junit.Test;
 
 public class CameraPermissionsTest {

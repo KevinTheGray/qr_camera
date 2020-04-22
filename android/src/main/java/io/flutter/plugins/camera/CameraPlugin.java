@@ -6,6 +6,7 @@ package io.flutter.plugins.camera;
 
 import android.app.Activity;
 import android.os.Build;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
@@ -13,7 +14,6 @@ import io.flutter.embedding.engine.plugins.activity.ActivityAware;
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.PluginRegistry.Registrar;
-import io.flutter.plugins.camera.CameraPermissions.PermissionsRegistry;
 import io.flutter.view.TextureRegistry;
 
 /**
@@ -50,7 +50,6 @@ public final class CameraPlugin implements FlutterPlugin, ActivityAware {
     plugin.maybeStartListening(
         registrar.activity(),
         registrar.messenger(),
-        registrar::addRequestPermissionsResultListener,
         registrar.view());
   }
 
@@ -69,7 +68,6 @@ public final class CameraPlugin implements FlutterPlugin, ActivityAware {
     maybeStartListening(
         binding.getActivity(),
         flutterPluginBinding.getBinaryMessenger(),
-        binding::addRequestPermissionsResultListener,
         flutterPluginBinding.getFlutterEngine().getRenderer());
   }
 
@@ -97,15 +95,12 @@ public final class CameraPlugin implements FlutterPlugin, ActivityAware {
   private void maybeStartListening(
       Activity activity,
       BinaryMessenger messenger,
-      PermissionsRegistry permissionsRegistry,
       TextureRegistry textureRegistry) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
       // If the sdk is less than 21 (min sdk for Camera2) we don't register the plugin.
       return;
     }
 
-    methodCallHandler =
-        new MethodCallHandlerImpl(
-            activity, messenger, new CameraPermissions(), permissionsRegistry, textureRegistry);
+    methodCallHandler = new MethodCallHandlerImpl(activity, messenger, textureRegistry);
   }
 }

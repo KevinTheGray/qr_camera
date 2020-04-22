@@ -2,6 +2,7 @@ package io.flutter.plugins.camera;
 
 import android.app.Activity;
 import android.hardware.camera2.CameraAccessException;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import io.flutter.plugin.common.BinaryMessenger;
@@ -9,14 +10,11 @@ import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.Result;
-import io.flutter.plugins.camera.CameraPermissions.PermissionsRegistry;
 import io.flutter.view.TextureRegistry;
 
 final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
   private final Activity activity;
   private final BinaryMessenger messenger;
-  private final CameraPermissions cameraPermissions;
-  private final PermissionsRegistry permissionsRegistry;
   private final TextureRegistry textureRegistry;
   private final MethodChannel methodChannel;
   private final EventChannel imageStreamChannel;
@@ -25,13 +23,9 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
   MethodCallHandlerImpl(
       Activity activity,
       BinaryMessenger messenger,
-      CameraPermissions cameraPermissions,
-      PermissionsRegistry permissionsAdder,
       TextureRegistry textureRegistry) {
     this.activity = activity;
     this.messenger = messenger;
-    this.cameraPermissions = cameraPermissions;
-    this.permissionsRegistry = permissionsAdder;
     this.textureRegistry = textureRegistry;
 
     methodChannel = new MethodChannel(messenger, "plugins.flutter.io/camera");
@@ -54,22 +48,11 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
           if (camera != null) {
             camera.close();
           }
-          cameraPermissions.requestPermissions(
-              activity,
-              permissionsRegistry,
-              call.argument("enableAudio"),
-              (String errCode, String errDesc) -> {
-                if (errCode == null) {
-                  try {
-                    instantiateCamera(call, result);
-                  } catch (Exception e) {
-                    handleException(e, result);
-                  }
-                } else {
-                  result.error(errCode, errDesc, null);
-                }
-              });
-
+          try {
+            instantiateCamera(call, result);
+          } catch (Exception e) {
+            handleException(e, result);
+          }
           break;
         }
       case "startImageStream":
