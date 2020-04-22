@@ -39,7 +39,7 @@ enum ResolutionPreset {
 }
 
 // ignore: inference_failure_on_function_return_type
-typedef onLatestQrStringAvailable = Function(String image);
+typedef onQrCodeScanned = Function(String qrCodeString);
 
 /// Returns the resolution preset as a String.
 String serializeResolutionPreset(ResolutionPreset resolutionPreset) {
@@ -155,22 +155,22 @@ class CameraValue {
     this.isInitialized,
     this.errorDescription,
     this.previewSize,
-    this.isStreamingImages,
+    this.isScanningForQrCodes,
     bool isRecordingPaused,
   });
 
   const CameraValue.uninitialized()
       : this(
           isInitialized: false,
-          isStreamingImages: false,
+          isScanningForQrCodes: false,
           isRecordingPaused: false,
         );
 
   /// True after [CameraController.initialize] has completed successfully.
   final bool isInitialized;
 
-  /// True when images from the camera are being streamed.
-  final bool isStreamingImages;
+  /// True when qr codes from the camera are being scanned.
+  final bool isScanningForQrCodes;
 
   final String errorDescription;
 
@@ -199,7 +199,7 @@ class CameraValue {
       isInitialized: isInitialized ?? this.isInitialized,
       errorDescription: errorDescription,
       previewSize: previewSize ?? this.previewSize,
-      isStreamingImages: isStreamingImages ?? this.isStreamingImages,
+      isScanningForQrCodes: isStreamingImages ?? this.isScanningForQrCodes,
     );
   }
 
@@ -209,7 +209,7 @@ class CameraValue {
         'isInitialized: $isInitialized, '
         'errorDescription: $errorDescription, '
         'previewSize: $previewSize, '
-        'isStreamingImages: $isStreamingImages)';
+        'isStreamingImages: $isScanningForQrCodes)';
   }
 }
 
@@ -236,7 +236,7 @@ class CameraController extends ValueNotifier<CameraValue> {
   int _textureId;
   bool _isDisposed = false;
   StreamSubscription<dynamic> _eventSubscription;
-  StreamSubscription<dynamic> _imageStreamSubscription;
+  StreamSubscription<dynamic> _qrCodeStringStreamSubscription;
   Completer<void> _creatingCompleter;
 
   /// Initializes the camera on the device.
@@ -310,7 +310,8 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
   }
 
-  /// Start streaming images from platform camera.
+  /// Start scanning for qr codes and return the raw value
+  /// from platform camera.
   ///
   /// Settings for capturing images on iOS and Android is set to always use the
   /// latest image available from the camera and will drop all other images.
@@ -320,66 +321,66 @@ class CameraController extends ValueNotifier<CameraValue> {
   /// have significant frame rate drops for [CameraPreview] on lower end
   /// devices.
   ///
-  /// Throws a [CameraException] if image streaming or video recording has
+  /// Throws a [CameraException] if qr code scanning has
   /// already started.
   // TODO(bmparr): Add settings for resolution and fps.
-  Future<void> startImageStream(onLatestQrStringAvailable onAvailable) async {
+  Future<void> startScanningForQrCodes(onQrCodeScanned onScanned) async {
     if (!value.isInitialized || _isDisposed) {
       throw CameraException(
         'Uninitialized CameraController',
-        'startImageStream was called on uninitialized CameraController.',
+        'startScanningForQrCodes was called on uninitialized CameraController.',
       );
     }
-    if (value.isStreamingImages) {
+    if (value.isScanningForQrCodes) {
       throw CameraException(
-        'A camera has started streaming images.',
-        'startImageStream was called while a camera was streaming images.',
+        'A camera has started scanning qr codes.',
+        'startScanningForQrCodes was called while a camera was scanning.',
       );
     }
 
     try {
-      await _channel.invokeMethod<void>('startImageStream');
+      await _channel.invokeMethod<void>('startScanningForQrCodes');
       value = value.copyWith(isStreamingImages: true);
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);
     }
     const EventChannel cameraEventChannel =
-        EventChannel('plugins.flutter.io/camera/imageStream');
-    _imageStreamSubscription =
+        EventChannel('plugins.flutter.io/camera/qrCodeStream');
+    _qrCodeStringStreamSubscription =
         cameraEventChannel.receiveBroadcastStream().listen(
       (dynamic imageData) {
-        onAvailable(imageData);
+        onScanned(imageData);
       },
     );
   }
 
-  /// Stop streaming images from platform camera.
+  /// Stop scanning for qr codes from platform camera.
   ///
-  /// Throws a [CameraException] if image streaming was not started or video
+  /// Throws a [CameraException] if scanning was not started or video
   /// recording was started.
-  Future<void> stopImageStream() async {
+  Future<void> stopScanningForQrCodes() async {
     if (!value.isInitialized || _isDisposed) {
       throw CameraException(
         'Uninitialized CameraController',
-        'stopImageStream was called on uninitialized CameraController.',
+        'stopScanningForQrCodes was called on uninitialized CameraController.',
       );
     }
-    if (!value.isStreamingImages) {
+    if (!value.isScanningForQrCodes) {
       throw CameraException(
-        'No camera is streaming images',
-        'stopImageStream was called when no camera is streaming images.',
+        'No camera is scanning for qr codes',
+        'stopScanningForQrCodes was called when no camera is scanning.',
       );
     }
 
     try {
       value = value.copyWith(isStreamingImages: false);
-      await _channel.invokeMethod<void>('stopImageStream');
+      await _channel.invokeMethod<void>('stopScanningForQrCodes');
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);
     }
 
-    await _imageStreamSubscription.cancel();
-    _imageStreamSubscription = null;
+    await _qrCodeStringStreamSubscription.cancel();
+    _qrCodeStringStreamSubscription = null;
   }
 
   /// Releases the resources of this camera.

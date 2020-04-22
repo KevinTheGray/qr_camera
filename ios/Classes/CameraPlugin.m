@@ -125,8 +125,8 @@ static ResolutionPreset getResolutionPresetForString(NSString *preset) {
 
 - (void)start;
 - (void)stop;
-- (void)startImageStreamWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger;
-- (void)stopImageStream;
+- (void)startScanningForQrCodesWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger;
+- (void)stopScanningForQrCodes;
 @end
 
 @implementation FLTCam {
@@ -333,10 +333,10 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   return nil;
 }
 
-- (void)startImageStreamWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger {
+- (void)startScanningForQrCodesWithMessenger:(NSObject<FlutterBinaryMessenger> *)messenger {
   if (!_isStreamingImages) {
     FlutterEventChannel *eventChannel =
-        [FlutterEventChannel eventChannelWithName:@"plugins.flutter.io/camera/imageStream"
+        [FlutterEventChannel eventChannelWithName:@"plugins.flutter.io/camera/qrCodeStream"
                                   binaryMessenger:messenger];
 
     _imageStreamHandler = [[FLTImageStreamHandler alloc] init];
@@ -349,7 +349,7 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
   }
 }
 
-- (void)stopImageStream {
+- (void)stopScanningForQrCodes {
   if (_isStreamingImages) {
     _isStreamingImages = NO;
     _imageStreamHandler = nil;
@@ -462,11 +462,11 @@ FourCharCode const videoFormat = kCVPixelFormatType_32BGRA;
       });
       [cam start];
     }
-  } else if ([@"startImageStream" isEqualToString:call.method]) {
-    [_camera startImageStreamWithMessenger:_messenger];
+  } else if ([@"startScanningForQrCodes" isEqualToString:call.method]) {
+    [_camera startScanningForQrCodesWithMessenger:_messenger];
     result(nil);
-  } else if ([@"stopImageStream" isEqualToString:call.method]) {
-    [_camera stopImageStream];
+  } else if ([@"stopScanningForQrCodes" isEqualToString:call.method]) {
+    [_camera stopScanningForQrCodes];
     result(nil);
   } else {
     NSDictionary *argsMap = call.arguments;

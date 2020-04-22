@@ -36,7 +36,7 @@ void main() {
       await controller.initialize();
       bool _isDetecting = false;
 
-      await controller.startImageStream((String image) {
+      await controller.startScanningForQrCodes((String image) {
         if (_isDetecting) return;
 
         _isDetecting = true;
@@ -44,11 +44,11 @@ void main() {
         expectLater(image, isNotNull).whenComplete(() => _isDetecting = false);
       });
 
-      expect(controller.value.isStreamingImages, true);
+      expect(controller.value.isScanningForQrCodes, true);
 
       sleep(const Duration(milliseconds: 500));
 
-      await controller.stopImageStream();
+      await controller.stopScanningForQrCodes();
       await controller.dispose();
     },
     skip: !Platform.isAndroid,
