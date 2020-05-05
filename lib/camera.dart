@@ -190,7 +190,7 @@ class CameraValue {
     bool isInitialized,
     bool isRecordingVideo,
     bool isTakingPicture,
-    bool isStreamingImages,
+    bool isScanningForQrCodes,
     String errorDescription,
     Size previewSize,
     bool isRecordingPaused,
@@ -199,7 +199,7 @@ class CameraValue {
       isInitialized: isInitialized ?? this.isInitialized,
       errorDescription: errorDescription,
       previewSize: previewSize ?? this.previewSize,
-      isScanningForQrCodes: isStreamingImages ?? this.isScanningForQrCodes,
+      isScanningForQrCodes: isScanningForQrCodes ?? this.isScanningForQrCodes,
     );
   }
 
@@ -276,21 +276,6 @@ class CameraController extends ValueNotifier<CameraValue> {
     return _creatingCompleter.future;
   }
 
-  /// Prepare the capture session for video recording.
-  ///
-  /// Use of this method is optional, but it may be called for performance
-  /// reasons on iOS.
-  ///
-  /// Preparing audio can cause a minor delay in the CameraPreview view on iOS.
-  /// If video recording is intended, calling this early eliminates this delay
-  /// that would otherwise be experienced when video recording is started.
-  /// This operation is a no-op on Android.
-  ///
-  /// Throws a [CameraException] if the prepare fails.
-  Future<void> prepareForVideoRecording() async {
-    await _channel.invokeMethod<void>('prepareForVideoRecording');
-  }
-
   /// Listen to events from the native plugins.
   ///
   /// A "cameraClosing" event is sent when the camera is closed automatically by the system (for example when the app go to background). The plugin will try to reopen the camera automatically but any ongoing recording will end.
@@ -325,22 +310,19 @@ class CameraController extends ValueNotifier<CameraValue> {
   /// already started.
   // TODO(bmparr): Add settings for resolution and fps.
   Future<void> startScanningForQrCodes(onQrCodeScanned onScanned) async {
-    if (!value.isInitialized || _isDisposed) {
+    if (value.isScanningForQrCodes) {
+      return;
+    }
+    if (_isDisposed) {
       throw CameraException(
         'Uninitialized CameraController',
-        'startScanningForQrCodes was called on uninitialized CameraController.',
-      );
-    }
-    if (value.isScanningForQrCodes) {
-      throw CameraException(
-        'A camera has started scanning qr codes.',
-        'startScanningForQrCodes was called while a camera was scanning.',
+        'startScanningForQrCodes was called on disposed CameraController.',
       );
     }
 
     try {
       await _channel.invokeMethod<void>('startScanningForQrCodes');
-      value = value.copyWith(isStreamingImages: true);
+      value = value.copyWith(isScanningForQrCodes: true);
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);
     }
@@ -359,21 +341,18 @@ class CameraController extends ValueNotifier<CameraValue> {
   /// Throws a [CameraException] if scanning was not started or video
   /// recording was started.
   Future<void> stopScanningForQrCodes() async {
+    if (!value.isScanningForQrCodes) {
+      return;
+    }
     if (!value.isInitialized || _isDisposed) {
       throw CameraException(
         'Uninitialized CameraController',
         'stopScanningForQrCodes was called on uninitialized CameraController.',
       );
     }
-    if (!value.isScanningForQrCodes) {
-      throw CameraException(
-        'No camera is scanning for qr codes',
-        'stopScanningForQrCodes was called when no camera is scanning.',
-      );
-    }
 
     try {
-      value = value.copyWith(isStreamingImages: false);
+      value = value.copyWith(isScanningForQrCodes: false);
       await _channel.invokeMethod<void>('stopScanningForQrCodes');
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);
