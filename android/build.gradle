@@ -38,8 +38,7 @@ android {
     dependencies {
         implementation 'androidx.annotation:annotation:1.0.0'
         implementation 'androidx.core:core:1.0.0'
-        implementation 'com.google.firebase:firebase-ml-vision:24.0.2'
-        implementation 'com.google.firebase:firebase-ml-vision-barcode-model:16.1.0'
+        implementation 'com.google.mlkit:barcode-scanning:16.0.3'
     }
     testOptions {
         unitTests.returnDefaultValues = true

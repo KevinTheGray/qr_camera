@@ -16,12 +16,13 @@ import android.media.Image;
 import android.media.ImageReader;
 import android.util.Size;
 import android.view.Surface;
+import android.util.Log;
 
-import com.google.firebase.ml.vision.FirebaseVision;
-import com.google.firebase.ml.vision.barcode.FirebaseVisionBarcode;
-import com.google.firebase.ml.vision.barcode.FirebaseVisionBarcodeDetector;
-import com.google.firebase.ml.vision.barcode.FirebaseVisionBarcodeDetectorOptions;
-import com.google.firebase.ml.vision.common.FirebaseVisionImage;
+import com.google.mlkit.vision.barcode.Barcode;
+import com.google.mlkit.vision.barcode.BarcodeScanner;
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions;
+import com.google.mlkit.vision.barcode.BarcodeScanning;
+import com.google.mlkit.vision.common.InputImage;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -49,6 +50,7 @@ class Camera {
   private ImageReader imageStreamReader;
   private DartMessenger dartMessenger;
   private CaptureRequest.Builder captureRequestBuilder;
+  private boolean scanningForBarcodes = false;
 
   // Mirrors camera.dart
   public enum ResolutionPreset {
@@ -235,21 +237,27 @@ class Camera {
   private void setImageStreamImageAvailableListener(final EventChannel.EventSink imageStreamSink) {
     imageStreamReader.setOnImageAvailableListener(
         reader -> {
-          FirebaseVisionBarcodeDetectorOptions options =
-                  new FirebaseVisionBarcodeDetectorOptions.Builder()
-                          .setBarcodeFormats(FirebaseVisionBarcode.FORMAT_QR_CODE)
+            if (scanningForBarcodes) return;
+            BarcodeScannerOptions options =
+                  new BarcodeScannerOptions.Builder()
+                          .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
                           .build();
-          FirebaseVisionBarcodeDetector detector = FirebaseVision.getInstance()
-                  .getVisionBarcodeDetector(options);
+            BarcodeScanner barcodeScanner =
+                    BarcodeScanning.getClient(options);
           Image img = reader.acquireLatestImage();
           if (img == null) return;
-          detector.detectInImage(FirebaseVisionImage.fromMediaImage(img, 0))
+          scanningForBarcodes = true;
+          barcodeScanner.process(InputImage.fromMediaImage(img, 0))
                   .addOnSuccessListener(barcodes -> {
                     if(barcodes.size() > 0) {
                       imageStreamSink.success( barcodes.get(0).getRawValue());
                     }
-                  });
-          img.close();
+                  }).addOnFailureListener(exception -> {
+                Log.d("QRCamera_Plugin", exception.toString());
+            }).addOnCompleteListener(barcodes -> {
+                img.close();
+                scanningForBarcodes = false;
+          });
         },
         null);
   }
